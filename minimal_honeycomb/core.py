@@ -60,7 +60,8 @@ class MinimalHoneycombClient(HoneycombClient):
             variables = {argument_name: argument_info['value'] for argument_name, argument_info in arguments.items()}
         else:
             variables = None
-        results = self.client.raw_query(request_string, variables)
+        response = self.client.raw_query(request_string, variables)
+        results = response.get(request_name)
         return results
 
     def graphql_request_string(
