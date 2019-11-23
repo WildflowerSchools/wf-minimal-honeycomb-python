@@ -50,7 +50,7 @@ class MinimalHoneycombClient(HoneycombClient):
         arguments,
         return_object
     ):
-        request_string = self.graphql_request_string(
+        request_string = self.request_string(
             request_type,
             request_name,
             arguments,
@@ -61,10 +61,10 @@ class MinimalHoneycombClient(HoneycombClient):
         else:
             variables = None
         response = self.client.raw_query(request_string, variables)
-        results = response.get(request_name)
-        return results
+        return_value = response.get(request_name)
+        return return_value
 
-    def graphql_request_string(
+    def request_string(
         self,
         request_type,
         request_name,
@@ -94,11 +94,11 @@ class MinimalHoneycombClient(HoneycombClient):
                 {second_level_string: return_object}
             ]}
         ]
-        request_string = self.graphql_formatter(object)
+        request_string = self.request_string_formatter(object)
         return request_string
 
-    def graphql_formatter(self, object, indent_level=0):
-        graphql_string = ''
+    def request_string_formatter(self, object, indent_level=0):
+        request_string = ''
         for object_component in object:
             if hasattr(object_component, 'keys'):
                 if len(object_component) == 0:
@@ -108,15 +108,15 @@ class MinimalHoneycombClient(HoneycombClient):
                 # parent = object_component.keys()[0]
                 # children = object_component.values()[0]
                 for parent, children in object_component.items():
-                    graphql_string += '{}{} {{\n{}{}}}\n'.format(
+                    request_string += '{}{} {{\n{}{}}}\n'.format(
                         INDENT_STRING*indent_level,
                         parent,
-                        self.graphql_formatter(children, indent_level=indent_level + 1),
+                        self.request_string_formatter(children, indent_level=indent_level + 1),
                         INDENT_STRING*indent_level
                     )
             else:
-                graphql_string += '{}{}\n'.format(
+                request_string += '{}{}\n'.format(
                     INDENT_STRING*indent_level,
                     object_component
                 )
-        return graphql_string
+        return request_string
