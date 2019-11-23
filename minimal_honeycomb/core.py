@@ -56,7 +56,10 @@ class MinimalHoneycombClient(HoneycombClient):
             arguments,
             return_object
         )
-        variables = {argument_name: argument_info['value'] for argument_name, argument_info in arguments.items()}
+        if arguments is not None:
+            variables = {argument_name: argument_info['value'] for argument_name, argument_info in arguments.items()}
+        else:
+            variables = None
         results = self.client.raw_query(request_string, variables)
         return results
 
