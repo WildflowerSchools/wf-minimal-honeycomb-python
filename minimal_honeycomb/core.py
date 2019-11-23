@@ -61,7 +61,10 @@ class MinimalHoneycombClient(HoneycombClient):
         else:
             variables = None
         response = self.client.raw_query(request_string, variables)
-        return_value = response.get(request_name)
+        try:
+            return_value = response.get(request_name)
+        except:
+            raise ValueError('Received unexpected response from Honeycomb: {}'.format(response))
         return return_value
 
     def request_string(
