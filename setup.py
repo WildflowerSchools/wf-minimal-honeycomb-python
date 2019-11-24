@@ -5,7 +5,8 @@ BASEDIR = os.path.dirname(os.path.abspath(__file__))
 VERSION = open(os.path.join(BASEDIR, 'VERSION')).read().strip()
 
 BASE_DEPENDENCIES = [
-    'wildflower-honeycomb-sdk>=0.7.3',
+    'wf-gqlpycgen>=0.5.9',
+    'wildflower-honeycomb-sdk>=0.7.3'
 ]
 
 # allow setup.py to be run from any path
