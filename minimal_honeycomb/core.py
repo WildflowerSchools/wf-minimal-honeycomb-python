@@ -1,4 +1,6 @@
 from honeycomb import HoneycombClient
+from gqlpycgen.client import FileUpload
+from uuid import uuid4
 import json
 import os
 
@@ -50,17 +52,45 @@ class MinimalHoneycombClient(HoneycombClient):
         arguments,
         return_object
     ):
-        request_string = self.graphql_request_string(
+        request_string = self.request_string(
             request_type,
             request_name,
             arguments,
             return_object
         )
-        variables = {argument_name: argument_info['value'] for argument_name, argument_info in arguments.items()}
-        results = self.client.raw_query(request_string, variables)
-        return results
+        if arguments is not None:
+            variables = {argument_name: argument_info['value'] for argument_name, argument_info in arguments.items()}
+        else:
+            variables = None
+        if request_name == 'createDatapoint':
+            # Prepare upload package
+            filename = uuid4().hex
+            try:
+                data = variables.get('datapoint').get('file').get('data')
+            except:
+                raise ValueError('createDatapoint arguments do not contain datapoint.file.data field')
+            try:
+                content_type = variables.get('datapoint').get('file').get('contentType')
+            except:
+                raise ValueError('createDatapoint arguments do not contain datapoint.file.contentType field')
+            files = FileUpload()
+            files.add_file("variables.datapoint.file.data", filename, data, content_type)
+            # Replace data with filename
+            variables['datapoint']['file']['data'] = filename
+            # if hasattr(datapoint, "to_json"):
+            #     variables["datapoint"] = datapoint.to_json()
+            # else:
+            #     variables["datapoint"] = datapoint
+            response = self.client.client.execute(request_string, variables, files)
+        else:
+            response = self.client.raw_query(request_string, variables)
+        try:
+            return_value = response.get(request_name)
+        except:
+            raise ValueError('Received unexpected response from Honeycomb: {}'.format(response))
+        return return_value
 
-    def graphql_request_string(
+    def request_string(
         self,
         request_type,
         request_name,
@@ -90,11 +120,11 @@ class MinimalHoneycombClient(HoneycombClient):
                 {second_level_string: return_object}
             ]}
         ]
-        request_string = self.graphql_formatter(object)
+        request_string = self.request_string_formatter(object)
         return request_string
 
-    def graphql_formatter(self, object, indent_level=0):
-        graphql_string = ''
+    def request_string_formatter(self, object, indent_level=0):
+        request_string = ''
         for object_component in object:
             if hasattr(object_component, 'keys'):
                 if len(object_component) == 0:
@@ -104,15 +134,15 @@ class MinimalHoneycombClient(HoneycombClient):
                 # parent = object_component.keys()[0]
                 # children = object_component.values()[0]
                 for parent, children in object_component.items():
-                    graphql_string += '{}{} {{\n{}{}}}\n'.format(
+                    request_string += '{}{} {{\n{}{}}}\n'.format(
                         INDENT_STRING*indent_level,
                         parent,
-                        self.graphql_formatter(children, indent_level=indent_level + 1),
+                        self.request_string_formatter(children, indent_level=indent_level + 1),
                         INDENT_STRING*indent_level
                     )
             else:
-                graphql_string += '{}{}\n'.format(
+                request_string += '{}{}\n'.format(
                     INDENT_STRING*indent_level,
                     object_component
                 )
-        return graphql_string
+        return request_string
