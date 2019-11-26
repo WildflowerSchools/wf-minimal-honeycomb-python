@@ -1,12 +1,12 @@
-from honeycomb import HoneycombClient
-from gqlpycgen.client import FileUpload
+from gqlpycgen.client import Client, FileUpload
+from gqlpycgen.api import QueryBase, MutationBase
 from uuid import uuid4
 import json
 import os
 
 INDENT_STRING = '  '
-class MinimalHoneycombClient(HoneycombClient):
 
+class MinimalHoneycombClient:
     def __init__(
         self,
         uri=None,
@@ -35,7 +35,7 @@ class MinimalHoneycombClient(HoneycombClient):
             client_secret = os.getenv('HONEYCOMB_CLIENT_SECRET')
             if client_secret is None:
                 raise ValueError('Honeycomb client secret not specified and environment variable HONEYCOMB_CLIENT_SECRET not set')
-        self.client = HoneycombClient(
+        self.client = Client(
             uri=uri,
             client_credentials={
                 'token_uri': token_uri,
@@ -44,6 +44,8 @@ class MinimalHoneycombClient(HoneycombClient):
                 'client_secret': client_secret,
             }
         )
+        self.mutation = MutationBase(self.client)
+        self.query = QueryBase(self.client)
 
     def request(
         self,
@@ -78,9 +80,9 @@ class MinimalHoneycombClient(HoneycombClient):
             files.add_file("variables.datapoint.file.data", filename, data_json, content_type)
             # Replace data with filename
             variables['datapoint']['file']['data'] = filename
-            response = self.client.client.execute(request_string, variables, files)
+            response = self.client.execute(request_string, variables, files)
         else:
-            response = self.client.raw_query(request_string, variables)
+            response = self.query.query(request_string, variables)
         try:
             return_value = response.get(request_name)
         except:
