@@ -74,13 +74,10 @@ class MinimalHoneycombClient(HoneycombClient):
             except:
                 raise ValueError('createDatapoint arguments do not contain datapoint.file.contentType field')
             files = FileUpload()
-            files.add_file("variables.datapoint.file.data", filename, data, content_type)
+            data_json = json.dumps(data)
+            files.add_file("variables.datapoint.file.data", filename, data_json, content_type)
             # Replace data with filename
             variables['datapoint']['file']['data'] = filename
-            # if hasattr(datapoint, "to_json"):
-            #     variables["datapoint"] = datapoint.to_json()
-            # else:
-            #     variables["datapoint"] = datapoint
             response = self.client.client.execute(request_string, variables, files)
         else:
             response = self.client.raw_query(request_string, variables)
