@@ -119,6 +119,36 @@ class MinimalHoneycombClient:
         request_string = self.request_string_formatter(object)
         return request_string
 
+    def variables_string(
+        self,
+        request_type,
+        request_name,
+        arguments,
+        return_object
+    ):
+        if arguments is not None:
+            variables = {argument_name: argument_info['value'] for argument_name, argument_info in arguments.items()}
+        else:
+            variables = None
+        if request_name == 'createDatapoint':
+            # Prepare upload package
+            filename = uuid4().hex
+            try:
+                data = variables.get('datapoint').get('file').get('data')
+            except:
+                raise ValueError('createDatapoint arguments do not contain datapoint.file.data field')
+            try:
+                content_type = variables.get('datapoint').get('file').get('contentType')
+            except:
+                raise ValueError('createDatapoint arguments do not contain datapoint.file.contentType field')
+            files = FileUpload()
+            data_json = json.dumps(data)
+            files.add_file("variables.datapoint.file.data", filename, data_json, content_type)
+            # Replace data with filename
+            variables['datapoint']['file']['data'] = filename
+        variables_string = json.dumps(variables, indent=4)
+        return variables_string
+
     def compound_request(
         self,
         parent_request_type,
