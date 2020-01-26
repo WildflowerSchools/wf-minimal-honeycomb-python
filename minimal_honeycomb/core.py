@@ -127,6 +127,7 @@ class MinimalHoneycombClient:
                 logger.info('No cursor returned. Terminating fetch')
                 break
             request_index += 1
+        logger.info('Fetched {} data points total'.format(len(data_list)))
         return data_list
 
     def request(
