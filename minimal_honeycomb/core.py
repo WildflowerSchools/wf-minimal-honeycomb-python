@@ -367,3 +367,47 @@ class MinimalHoneycombClient:
                     object_component
                 )
         return request_string
+
+    def parse_datapoints(
+        self,
+        datapoints
+    ):
+        logger.info('Parsing {} datapoints'.format(len(datapoints)))
+        data=[]
+        for datapoint in datapoints:
+            data_blob = datapoint.get('file', {}).get('data')
+            if data_blob is not None:
+                parsed_data_dict_list = self.parse_data_blob(data_blob)
+                del datapoint['file']['data']
+                for parsed_data_dict in parsed_data_dict_list:
+                    parsed_data = {'parsed_data': parsed_data_dict}
+                    data.append({**datapoint, **parsed_data})
+            else:
+                data.append(datapoint)
+        return data
+
+    def parse_data_blob(
+        self,
+        data_blob
+    ):
+        data_dict_list=[]
+        if isinstance(data_blob, dict):
+            data_dict_list.append(data_blob)
+            return data_dict_list
+        if isinstance(data_blob, list):
+            for item in data_blob:
+                data_dict_list.extend(self.parse_data_blob(item))
+            return data_dict_list
+        try:
+            data_dict_list.extend(self.parse_data_blob(json.loads(data_blob)))
+            return data_dict_list
+        except:
+            pass
+        try:
+            for line in data_blob.split('\n'):
+                if len(line) > 0:
+                    data_dict_list.extend(self.parse_data_blob(line))
+            return data_dict_list
+        except:
+            pass
+        return data_dict_list
