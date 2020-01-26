@@ -2,6 +2,9 @@ from gqlpycgen.client import Client, FileUpload
 from uuid import uuid4
 import json
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 INDENT_STRING = '  '
 
@@ -43,6 +46,76 @@ class MinimalHoneycombClient:
                 'client_secret': client_secret,
             }
         )
+
+    def fetch_data(
+        self,
+        request_name,
+        arguments=None,
+        return_data=None,
+        read_chunk_size=100,
+        sort_arguments=None
+    ):
+        if arguments == None:
+            arguments = dict()
+        if 'page' in arguments.keys():
+            raise ValueError('Specifying pagination parameters is redundant. Use read_chunk_size and sort_arguments')
+        return_object = [
+            {'data': return_data},
+            {'page_info': [
+                'count',
+                'cursor'
+            ]}
+        ]
+        cursor = None
+        data_list = list()
+        request_index = 0
+        while True:
+            page_argument = {
+                'page': {
+                    'type': 'PaginationInput',
+                    'value': {
+                        'max': read_chunk_size,
+                        'cursor': cursor,
+                        'sort': sort_arguments
+                    }
+                }
+            }
+            arguments_with_pagination_details = {**arguments, **page_argument}
+            logger.info('Sending request {}'.format(request_index))
+            result = self.request(
+                request_type='query',
+                request_name=request_name,
+                arguments=arguments_with_pagination_details,
+                return_object=return_object
+            )
+            try:
+                returned_data = result['data']
+                count=result['page_info']['count']
+                cursor=result['page_info']['cursor']
+            except:
+                raise ValueError('Received unexpected result from Honeycomb:\n{}'.format(result))
+            try:
+                num_data_points=len(returned_data)
+            except:
+                raise ValueError('Expected list for data. Received {}'.format(returned_data))
+            if num_data_points != count:
+                raise ValueError('Honeycomb reported count as {} but received {} data points'.format(
+                    count,
+                    num_data_points
+                ))
+            if num_data_points == 0:
+                logger.info('Request {} returned no data points. Terminating fetch.'.format(request_index))
+                break
+            logger.info('Request {} returned {} data points'.format(
+                request_index,
+                num_data_points
+            ))
+            data_list.extend(returned_data)
+            if cursor is None:
+                logger.info('No cursor returned. Terminating fetch')
+                break
+            request_index += 1
+        return data_list
 
     def request(
         self,
