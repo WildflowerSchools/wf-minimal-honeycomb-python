@@ -52,6 +52,7 @@ class MinimalHoneycombClient:
         request_name,
         arguments=None,
         return_data=None,
+        data_id_field_name=None,
         read_chunk_size=100,
         sort_arguments=None
     ):
@@ -68,6 +69,7 @@ class MinimalHoneycombClient:
         ]
         cursor = None
         data_list = list()
+        data_ids = set()
         request_index = 0
         while True:
             page_argument = {
@@ -106,11 +108,21 @@ class MinimalHoneycombClient:
             if num_data_points == 0:
                 logger.info('Request {} returned no data points. Terminating fetch.'.format(request_index))
                 break
-            logger.info('Request {} returned {} data points'.format(
+            new_data_point_count = 0
+            for datum in returned_data:
+                try:
+                    datum_id = datum[data_id_field_name]
+                except:
+                    raise ValueError('Returned datum does not contain field {}'.format(data_id_field_name))
+                if datum_id not in data_ids:
+                    new_data_point_count += 1
+                    data_ids.add(datum_id)
+                    data_list.append(datum)
+            logger.info('Request {} returned {} data points containing {} new data points'.format(
                 request_index,
-                num_data_points
+                num_data_points,
+                new_data_point_count
             ))
-            data_list.extend(returned_data)
             if cursor is None:
                 logger.info('No cursor returned. Terminating fetch')
                 break
