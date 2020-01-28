@@ -48,19 +48,19 @@ class MinimalHoneycombClient:
             }
         )
 
-    def fetch_data(
+    def bulk_query(
         self,
         request_name,
         arguments=None,
         return_data=None,
-        data_id_field_name=None,
-        read_chunk_size=100,
+        id_field_name=None,
+        chunk_size=100,
         sort_arguments=None
     ):
         if arguments == None:
             arguments = dict()
         if 'page' in arguments.keys():
-            raise ValueError('Specifying pagination parameters is redundant. Use read_chunk_size and sort_arguments')
+            raise ValueError('Specifying pagination parameters is redundant. Use chunk_size and sort_arguments')
         return_object = [
             {'data': return_data},
             {'page_info': [
@@ -77,14 +77,14 @@ class MinimalHoneycombClient:
                 'page': {
                     'type': 'PaginationInput',
                     'value': {
-                        'max': read_chunk_size,
+                        'max': chunk_size,
                         'cursor': cursor,
                         'sort': sort_arguments
                     }
                 }
             }
             arguments_with_pagination_details = {**arguments, **page_argument}
-            logger.info('Sending request {}'.format(request_index))
+            logger.info('Sending query request {}'.format(request_index))
             result = self.request(
                 request_type='query',
                 request_name=request_name,
@@ -98,77 +98,77 @@ class MinimalHoneycombClient:
             except:
                 raise ValueError('Received unexpected result from Honeycomb:\n{}'.format(result))
             try:
-                num_data_points=len(returned_data)
+                num_data_items=len(returned_data)
             except:
                 raise ValueError('Expected list for data. Received {}'.format(returned_data))
-            if num_data_points != count:
+            if num_data_items != count:
                 raise ValueError('Honeycomb reported count as {} but received {} data points'.format(
                     count,
-                    num_data_points
+                    num_data_items
                 ))
-            if num_data_points == 0:
-                logger.info('Request {} returned no data points. Terminating fetch.'.format(request_index))
+            if num_data_items == 0:
+                logger.info('Query request {} returned no data. Terminating fetch.'.format(request_index))
                 break
-            new_data_point_count = 0
+            new_data_item_count = 0
             for datum in returned_data:
                 try:
-                    datum_id = datum[data_id_field_name]
+                    datum_id = datum[id_field_name]
                 except:
-                    raise ValueError('Returned datum does not contain field {}'.format(data_id_field_name))
+                    raise ValueError('Returned datum does not contain field {}'.format(id_field_name))
                 if datum_id not in data_ids:
-                    new_data_point_count += 1
+                    new_data_item_count += 1
                     data_ids.add(datum_id)
                     data_list.append(datum)
-            logger.info('Request {} returned {} data points containing {} new data points'.format(
+            logger.info('Query request {} returned {} data items containing {} new data items'.format(
                 request_index,
-                num_data_points,
-                new_data_point_count
+                num_data_items,
+                new_data_item_count
             ))
             if cursor is None:
                 logger.info('No cursor returned. Terminating fetch')
                 break
             request_index += 1
-        logger.info('Fetched {} data points total'.format(len(data_list)))
+        logger.info('Returned {} data items total'.format(len(data_list)))
         return data_list
 
-    def write_data(
+    def bulk_mutation(
         self,
         request_name,
         arguments,
         return_object,
-        write_chunk_size=100
+        chunk_size=100
     ):
         # Scan arguments to determine structure
-        num_data_points = 1
+        num_mutations = 1
         argument_is_list = dict()
         for argument_name, argument_info in arguments.items():
             try:
                 num_argument_values = len(argument_info['value'])
                 argument_is_list[argument_name] = True
-                if num_data_points != 1 and num_argument_values != num_data_points:
+                if num_mutations != 1 and num_argument_values != num_mutations:
                     raise ValueError('All argument values that are not singletons must be the same length')
-                num_data_points = num_argument_values
+                num_mutations = num_argument_values
             except:
                 argument_is_list[argument_name] = False
-        logger.info('Preparing to write {} data points using endpoint {}'.format(
-            num_data_points,
+        logger.info('Preparing to request {} mutations using endpoint {}'.format(
+            num_mutations,
             request_name
         ))
-        num_chunks = math.ceil(num_data_points/write_chunk_size)
-        logger.info('Writing data in {} chunks'.format(num_chunks))
+        num_chunks = math.ceil(num_mutations/chunk_size)
+        logger.info('Requesting mutations in {} chunks'.format(num_chunks))
         result_list=list()
         for chunk_index in range(num_chunks):
-            logger.info('Writing chunk {}'.format(chunk_index))
-            data_point_index_start = chunk_index*write_chunk_size
-            data_point_index_end = min([(chunk_index + 1)*write_chunk_size, num_data_points])
+            logger.info('Sending chunk {}'.format(chunk_index))
+            mutation_index_start = chunk_index*chunk_size
+            mutation_index_end = min([(chunk_index + 1)*chunk_size, num_mutations])
             child_request_list = list()
-            for data_point_index in range(data_point_index_start, data_point_index_end):
+            for mutation_index in range(mutation_index_start, mutation_index_end):
                 child_arguments = dict()
                 for argument_name, is_list in argument_is_list.items():
                     child_arguments[argument_name] = dict()
                     child_arguments[argument_name]['type'] = arguments[argument_name]['type']
                     if is_list:
-                        child_arguments[argument_name]['value'] = arguments[argument_name]['value'][data_point_index]
+                        child_arguments[argument_name]['value'] = arguments[argument_name]['value'][mutation_index]
                     else:
                         child_arguments[argument_name]['value'] = arguments[argument_name]['value']
                 child_request = {
@@ -181,7 +181,7 @@ class MinimalHoneycombClient:
             result = self.compound_request(
                 parent_request_type='mutation',
                 parent_request_name=request_name,
-                child_request_list = child_request_list
+                child_request_list=child_request_list
             )
             result_list.extend(list(result.values()))
         return result_list
