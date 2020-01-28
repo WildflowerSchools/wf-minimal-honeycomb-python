@@ -1,7 +1,11 @@
 from gqlpycgen.client import Client, FileUpload
 from uuid import uuid4
+import math
 import json
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 INDENT_STRING = '  '
 
@@ -43,6 +47,144 @@ class MinimalHoneycombClient:
                 'client_secret': client_secret,
             }
         )
+
+    def bulk_query(
+        self,
+        request_name,
+        arguments=None,
+        return_data=None,
+        id_field_name=None,
+        chunk_size=100,
+        sort_arguments=None
+    ):
+        if arguments == None:
+            arguments = dict()
+        if 'page' in arguments.keys():
+            raise ValueError('Specifying pagination parameters is redundant. Use chunk_size and sort_arguments')
+        return_object = [
+            {'data': return_data},
+            {'page_info': [
+                'count',
+                'cursor'
+            ]}
+        ]
+        cursor = None
+        data_list = list()
+        data_ids = set()
+        request_index = 0
+        while True:
+            page_argument = {
+                'page': {
+                    'type': 'PaginationInput',
+                    'value': {
+                        'max': chunk_size,
+                        'cursor': cursor,
+                        'sort': sort_arguments
+                    }
+                }
+            }
+            arguments_with_pagination_details = {**arguments, **page_argument}
+            logger.info('Sending query request {}'.format(request_index))
+            result = self.request(
+                request_type='query',
+                request_name=request_name,
+                arguments=arguments_with_pagination_details,
+                return_object=return_object
+            )
+            try:
+                returned_data = result['data']
+                count=result['page_info']['count']
+                cursor=result['page_info']['cursor']
+            except:
+                raise ValueError('Received unexpected result from Honeycomb:\n{}'.format(result))
+            try:
+                num_data_items=len(returned_data)
+            except:
+                raise ValueError('Expected list for data. Received {}'.format(returned_data))
+            if num_data_items != count:
+                raise ValueError('Honeycomb reported count as {} but received {} data points'.format(
+                    count,
+                    num_data_items
+                ))
+            if num_data_items == 0:
+                logger.info('Query request {} returned no data. Terminating fetch.'.format(request_index))
+                break
+            new_data_item_count = 0
+            for datum in returned_data:
+                try:
+                    datum_id = datum[id_field_name]
+                except:
+                    raise ValueError('Returned datum does not contain field {}'.format(id_field_name))
+                if datum_id not in data_ids:
+                    new_data_item_count += 1
+                    data_ids.add(datum_id)
+                    data_list.append(datum)
+            logger.info('Query request {} returned {} data items containing {} new data items'.format(
+                request_index,
+                num_data_items,
+                new_data_item_count
+            ))
+            if cursor is None:
+                logger.info('No cursor returned. Terminating fetch')
+                break
+            request_index += 1
+        logger.info('Returned {} data items total'.format(len(data_list)))
+        return data_list
+
+    def bulk_mutation(
+        self,
+        request_name,
+        arguments,
+        return_object,
+        chunk_size=100
+    ):
+        # Scan arguments to determine structure
+        num_mutations = 1
+        argument_is_list = dict()
+        for argument_name, argument_info in arguments.items():
+            try:
+                num_argument_values = len(argument_info['value'])
+                argument_is_list[argument_name] = True
+                if num_mutations != 1 and num_argument_values != num_mutations:
+                    raise ValueError('All argument values that are not singletons must be the same length')
+                num_mutations = num_argument_values
+            except:
+                argument_is_list[argument_name] = False
+        logger.info('Preparing to request {} mutations using endpoint {}'.format(
+            num_mutations,
+            request_name
+        ))
+        num_chunks = math.ceil(num_mutations/chunk_size)
+        logger.info('Requesting mutations in {} chunks'.format(num_chunks))
+        result_list=list()
+        for chunk_index in range(num_chunks):
+            logger.info('Sending chunk {}'.format(chunk_index))
+            mutation_index_start = chunk_index*chunk_size
+            mutation_index_end = min([(chunk_index + 1)*chunk_size, num_mutations])
+            child_request_list = list()
+            for mutation_index in range(mutation_index_start, mutation_index_end):
+                child_arguments = dict()
+                for argument_name, is_list in argument_is_list.items():
+                    child_arguments[argument_name] = dict()
+                    child_arguments[argument_name]['type'] = arguments[argument_name]['type']
+                    if is_list:
+                        child_arguments[argument_name]['value'] = arguments[argument_name]['value'][mutation_index]
+                    else:
+                        child_arguments[argument_name]['value'] = arguments[argument_name]['value']
+                child_request = {
+                    'name': request_name,
+                    'arguments': child_arguments,
+                    'return_object_name': 'return_object',
+                    'return_object': return_object
+                }
+                child_request_list.append(child_request)
+            result = self.compound_request(
+                parent_request_type='mutation',
+                parent_request_name=request_name,
+                child_request_list=child_request_list
+            )
+            result_list.extend(list(result.values()))
+        return result_list
 
     def request(
         self,
@@ -282,3 +424,47 @@ class MinimalHoneycombClient:
                     object_component
                 )
         return request_string
+
+    def parse_datapoints(
+        self,
+        datapoints
+    ):
+        logger.info('Parsing {} datapoints'.format(len(datapoints)))
+        data=[]
+        for datapoint in datapoints:
+            data_blob = datapoint.get('file', {}).get('data')
+            if data_blob is not None:
+                parsed_data_dict_list = self.parse_data_blob(data_blob)
+                del datapoint['file']['data']
+                for parsed_data_dict in parsed_data_dict_list:
+                    parsed_data = {'parsed_data': parsed_data_dict}
+                    data.append({**datapoint, **parsed_data})
+            else:
+                data.append(datapoint)
+        return data
+
+    def parse_data_blob(
+        self,
+        data_blob
+    ):
+        data_dict_list=[]
+        if isinstance(data_blob, dict):
+            data_dict_list.append(data_blob)
+            return data_dict_list
+        if isinstance(data_blob, list):
+            for item in data_blob:
+                data_dict_list.extend(self.parse_data_blob(item))
+            return data_dict_list
+        try:
+            data_dict_list.extend(self.parse_data_blob(json.loads(data_blob)))
+            return data_dict_list
+        except:
+            pass
+        try:
+            for line in data_blob.split('\n'):
+                if len(line) > 0:
+                    data_dict_list.extend(self.parse_data_blob(line))
+            return data_dict_list
+        except:
+            pass
+        return data_dict_list
