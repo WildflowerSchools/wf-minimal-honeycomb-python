@@ -1,5 +1,6 @@
 from gqlpycgen.client import Client, FileUpload
 from uuid import uuid4
+import math
 import json
 import os
 import logging
@@ -129,6 +130,61 @@ class MinimalHoneycombClient:
             request_index += 1
         logger.info('Fetched {} data points total'.format(len(data_list)))
         return data_list
+
+    def write_data(
+        self,
+        request_name,
+        arguments,
+        return_object,
+        write_chunk_size=100
+    ):
+        # Scan arguments to determine structure
+        num_data_points = 1
+        argument_is_list = dict()
+        for argument_name, argument_info in arguments.items():
+            try:
+                num_argument_values = len(argument_info['value'])
+                argument_is_list[argument_name] = True
+                if num_data_points != 1 and num_argument_values != num_data_points:
+                    raise ValueError('All argument values that are not singletons must be the same length')
+                num_data_points = num_argument_values
+            except:
+                argument_is_list[argument_name] = False
+        logger.info('Preparing to write {} data points using endpoint {}'.format(
+            num_data_points,
+            request_name
+        ))
+        num_chunks = math.ceil(num_data_points/write_chunk_size)
+        logger.info('Writing data in {} chunks'.format(num_chunks))
+        result_list=list()
+        for chunk_index in range(num_chunks):
+            logger.info('Writing chunk {}'.format(chunk_index))
+            data_point_index_start = chunk_index*write_chunk_size
+            data_point_index_end = min([(chunk_index + 1)*write_chunk_size, num_data_points])
+            child_request_list = list()
+            for data_point_index in range(data_point_index_start, data_point_index_end):
+                child_arguments = dict()
+                for argument_name, is_list in argument_is_list.items():
+                    child_arguments[argument_name] = dict()
+                    child_arguments[argument_name]['type'] = arguments[argument_name]['type']
+                    if is_list:
+                        child_arguments[argument_name]['value'] = arguments[argument_name]['value'][data_point_index]
+                    else:
+                        child_arguments[argument_name]['value'] = arguments[argument_name]['value']
+                child_request = {
+                    'name': request_name,
+                    'arguments': child_arguments,
+                    'return_object_name': 'return_object',
+                    'return_object': return_object
+                }
+                child_request_list.append(child_request)
+            result = self.compound_request(
+                parent_request_type='mutation',
+                parent_request_name=request_name,
+                child_request_list = child_request_list
+            )
+            result_list.extend(list(result.values()))
+        return result_list
 
     def request(
         self,
