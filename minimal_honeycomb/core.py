@@ -1,5 +1,6 @@
 from gqlpycgen.client import Client, FileUpload
 from uuid import uuid4
+import datetime
 import math
 import json
 import os
@@ -468,3 +469,45 @@ class MinimalHoneycombClient:
         except:
             pass
         return data_dict_list
+
+def extract_assignment(
+    assignments,
+    start_time=None,
+    end_time=None
+):
+    filtered_assignments = filter_assignments(
+        assignments=assignments,
+        start_time=start_time,
+        end_time=end_time
+    )
+    if len(filtered_assignments) == 0:
+        raise ValueError('No assignment matches the specified start and end times')
+    if len(filtered_assignments) > 1:
+        raise ValueError('Multiple assignments match the specified start and end times')
+    return filtered_assigments[0]
+
+def filter_assignments(
+    assignments,
+    start_time=None,
+    end_time=None
+):
+    filtered_assignments = list()
+    for assignment in assignments:
+        assignment_start_time = from_honeycomb_datetime(assignment.get('start'))
+        assignment_end_time = from_honeycomb_datetime(assignment.get('end'))
+        if start_time is not None and assignment_end_time is not None and (start_time > assignment_end_time):
+            continue
+        if end_time is not None and assignment_start_time is not None and (end_time < assignment_start_time):
+            continue
+        filtered_assignments.append(assignment)
+    return filtered_assignments
+
+def from_honeycomb_datetime(honeycomb_datetime):
+    if honeycomb_datetime is None:
+        return None
+    return datetime.datetime.strptime(honeycomb_datetime, '%Y-%m-%dT%H:%M:%S.%fZ').astimezone(datetime.timezone.utc)
+
+def to_honeycomb_datetime(python_datetime):
+    if python_datetime is None:
+        return None
+    return python_datetime.astimezone(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
