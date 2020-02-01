@@ -484,7 +484,7 @@ def extract_assignment(
         raise ValueError('No assignment matches the specified start and end times')
     if len(filtered_assignments) > 1:
         raise ValueError('Multiple assignments match the specified start and end times')
-    return filtered_assigments[0]
+    return filtered_assignments[0]
 
 def filter_assignments(
     assignments,
