@@ -505,7 +505,7 @@ def filter_assignments(
 def from_honeycomb_datetime(honeycomb_datetime):
     if honeycomb_datetime is None:
         return None
-    return datetime.datetime.strptime(honeycomb_datetime, '%Y-%m-%dT%H:%M:%S.%fZ').astimezone(datetime.timezone.utc)
+    return datetime.datetime.strptime(honeycomb_datetime, '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=datetime.timezone.utc)
 
 def to_honeycomb_datetime(python_datetime):
     if python_datetime is None:
