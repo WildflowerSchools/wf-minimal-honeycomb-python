@@ -5,6 +5,7 @@ import math
 import json
 import os
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,7 @@ class MinimalHoneycombClient:
         chunk_size=100,
         sort_arguments=None
     ):
+        overall_start = time.time()
         if arguments == None:
             arguments = dict()
         if 'page' in arguments.keys():
@@ -74,6 +76,7 @@ class MinimalHoneycombClient:
         data_ids = set()
         request_index = 0
         while True:
+            bulk_query_iteration_start = time.time()
             page_argument = {
                 'page': {
                     'type': 'PaginationInput',
@@ -86,12 +89,14 @@ class MinimalHoneycombClient:
             }
             arguments_with_pagination_details = {**arguments, **page_argument}
             logger.info('Sending query request {}'.format(request_index))
+            request_start = time.time()
             result = self.request(
                 request_type='query',
                 request_name=request_name,
                 arguments=arguments_with_pagination_details,
                 return_object=return_object
             )
+            request_time = time.time() - request_start
             try:
                 returned_data = result['data']
                 count=result['page_info']['count']
@@ -111,6 +116,7 @@ class MinimalHoneycombClient:
                 logger.info('Query request {} returned no data. Terminating fetch.'.format(request_index))
                 break
             new_data_item_count = 0
+            duplicate_check_start = time.time()
             for datum in returned_data:
                 try:
                     datum_id = datum[id_field_name]
@@ -120,16 +126,25 @@ class MinimalHoneycombClient:
                     new_data_item_count += 1
                     data_ids.add(datum_id)
                     data_list.append(datum)
-            logger.info('Query request {} returned {} data items containing {} new data items'.format(
+            duplicate_check_time = time.time() - duplicate_check_start
+            bulk_query_iteration_time = time.time() - bulk_query_iteration_start
+            logger.info('Query request {} returned {} data items containing {} new data items in {:.1f} ms (request operation {:.1f} ms, checking for duplicates {:.1f} ms)'.format(
                 request_index,
                 num_data_items,
-                new_data_item_count
+                new_data_item_count,
+                bulk_query_iteration_time*1000,
+                request_time*1000,
+                duplicate_check_time*1000
             ))
             if cursor is None:
                 logger.info('No cursor returned. Terminating fetch')
                 break
             request_index += 1
-        logger.info('Returned {} data items total'.format(len(data_list)))
+        overall_time = time.time() - overall_start
+        logger.info('Bulk query returned {} data items total in {:.3f} seconds'.format(
+            len(data_list),
+            overall_time
+        ))
         return data_list
 
     def bulk_mutation(
