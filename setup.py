@@ -5,7 +5,7 @@ BASEDIR = os.path.dirname(os.path.abspath(__file__))
 VERSION = open(os.path.join(BASEDIR, 'VERSION')).read().strip()
 
 BASE_DEPENDENCIES = [
-    'wf-gqlpycgen>=0.5.11',
+    'wf-gqlpycgen>=0.7.1',
 ]
 
 # allow setup.py to be run from any path
